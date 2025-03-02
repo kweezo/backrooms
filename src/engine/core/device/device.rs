@@ -87,10 +87,13 @@ impl Device {
 
     fn get_device_queues(
         device: &ash::Device,
-        queue_families: &mut Vec<QueueFamily>) {
+        graphics_family: &mut QueueFamily,
+        transfer_family: &mut Option<QueueFamily>) {
 
-        for family in queue_families.iter_mut() {
-            family.fill_with_queues(device);
+        graphics_family.fill_with_queues(device);
+
+        if matches!(transfer_family, Some(_)) {
+            transfer_family.as_mut().unwrap().fill_with_queues(device);
         }
     }
 
@@ -125,7 +128,7 @@ impl Device {
         let physical_device = physical_device::pick_physical_device(instance);
 
         let queue_families = QueueFamily::new(instance, physical_device);
-        let (graphics_family, transfer_family) =
+        let (mut graphics_family, mut transfer_family) =
          Device::pick_queue_families(queue_families);
 
 
@@ -135,6 +138,8 @@ impl Device {
             &graphics_family,
             &transfer_family
         );
+
+        Device::get_device_queues(&device, &mut graphics_family, &mut transfer_family);
 
         let allocator = Device::create_allocator(instance, physical_device, &device);
 
@@ -164,8 +169,21 @@ impl Device {
         self.allocator.clone()
     }
 
-    pub fn get_queue(&self) -> ash::vk::Queue {
-        todo!("When you see this exception, you know its time to implement this")
+    fn pick_queue_family(&self, queue_type: QueueType) -> &QueueFamily {
+
+        if matches!(queue_type, QueueType::TRANSFER) && matches!(self.transfer_family, Some(_)) {
+            return &self.transfer_family.as_ref().unwrap();
+        } 
+
+        &self.graphics_family
+    }
+
+    pub fn get_queue(&self, queue_type: QueueType) -> ash::vk::Queue {
+        if matches!(queue_type, QueueType::TRANSFER) && matches!(self.transfer_family, Some(_)) {
+            return self.transfer_family.as_ref().unwrap().get_queue();
+        } 
+
+        self.graphics_family.get_queue()
     }
 
     pub fn get_queue_family_indices(&self, queue_types: Vec<QueueType>) -> Vec<u32> {

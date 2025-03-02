@@ -1,17 +1,17 @@
 use super::Resource;
 use ash::vk;
 
-enum BufferCopyDestination {
+pub enum BufferCopyDestination {
     BUFFER(vk::Buffer),
     IMAGE(vk::Image)
 }
 
 pub struct BufferCopyInfo {
-    buff: vk::Buffer,
-    size: usize,
-    dst: BufferCopyDestination,
+    pub buff: vk::Buffer,
+    pub size: usize,
+    pub dst: BufferCopyDestination,
 
-    signal_semaphores: Vec<vk::Semaphore>
+    pub signal_semaphores: Vec<vk::Semaphore>
 }
 
 pub struct ResourceQueue {

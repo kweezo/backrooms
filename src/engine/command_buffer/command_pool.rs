@@ -18,6 +18,7 @@ impl<'a> CommandPool<'a> {
         CommandPool { device, command_pool }
     }
 
+
     fn create_command_pool( device: &Device, queue_type: QueueType, short_lived: bool, individual_reset: bool) -> vk::CommandPool{
         let queue_family_index = device.get_queue_family_indices(vec![queue_type])[0];
 
@@ -44,7 +45,7 @@ impl<'a> CommandPool<'a> {
         }.expect("Failed to createa command pool")
     }
 
-    fn allocate_command_buffers(&self, secondary: bool, count: u32) -> Vec<CommandBuffer> {
+    pub fn allocate_command_buffers(&self, secondary: bool, count: u32) -> Vec<CommandBuffer<'a>> {
         let level = if secondary {
             vk::CommandBufferLevel::SECONDARY
         } else {
@@ -66,11 +67,11 @@ impl<'a> CommandPool<'a> {
              .expect("Failed to allocate command buffers")
         };
 
-        let mut command_buffers = Vec::<CommandBuffer>::with_capacity(raw_buffers.len());
+        let mut command_buffers: Vec<CommandBuffer<'a>> = Vec::<CommandBuffer>::with_capacity(raw_buffers.len());
 
         for raw_buf in raw_buffers.iter() {
             command_buffers.push(
-                CommandBuffer::new(*raw_buf, secondary)
+                CommandBuffer::new(&self.device, *raw_buf, secondary)
             );
         }
 

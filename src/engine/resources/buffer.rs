@@ -1,6 +1,8 @@
-use crate::engine::{Device, QueueFamily, QueueType};
+use crate::engine::{resources::resource_queue::BufferCopyDestination, Device, QueueFamily, QueueType};
 use ash::vk::{self, Queue};
 use vk_mem::Alloc;
+
+use super::resource_queue::BufferCopyInfo;
 
 
 pub enum BufferType {
@@ -26,6 +28,9 @@ pub struct Buffer<'a> {
 
     on_device_memory: bool,
     updated_frequently: bool,
+
+    signal_semaphores: Vec<vk::Semaphore>
+    
 }
 
 impl<'a> Buffer<'a> {
@@ -37,7 +42,7 @@ impl<'a> Buffer<'a> {
 
         buffer_type: BufferType,
 
-        data: &[u8]        
+        data: &[u8],        
     ) -> Buffer<'a>{
         let (mut raw_buf, ptr)= Buffer::create_buffer(device, data.len(), buffer_type, on_device_memory, updated_frequently);
 
@@ -45,12 +50,12 @@ impl<'a> Buffer<'a> {
             if updated_frequently {
                 Buffer::copy_data_to_persistent_buffer(ptr.unwrap(), data);
 
-                return Buffer { device, raw_buf, raw_staging_buf: None, ptr: Some(ptr.unwrap()), size: data.len(), on_device_memory, updated_frequently };
+                return Buffer { device, raw_buf, raw_staging_buf: None, ptr: Some(ptr.unwrap()), size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
             } 
 
             Buffer::copy_data_to_buffer(device, &mut raw_buf, data);
 
-            return Buffer { device, raw_buf, raw_staging_buf: None, ptr: None, size: data.len(), on_device_memory, updated_frequently };
+            return Buffer { device, raw_buf, raw_staging_buf: None, ptr: None, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() };
         }
 
         let (mut raw_staging_buf, ptr) = Buffer::create_staging_buffer(device, data.len(), updated_frequently);
@@ -61,7 +66,7 @@ impl<'a> Buffer<'a> {
             Buffer::copy_data_to_buffer(device, &mut raw_staging_buf, data);
         }
 
-        Buffer { device, raw_buf, raw_staging_buf: Some(raw_staging_buf), ptr, size: data.len(), on_device_memory, updated_frequently }
+        Buffer { device, raw_buf, raw_staging_buf: Some(raw_staging_buf), ptr, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
     }
 
     fn create_buffer(device: &Device, size: usize, buffer_type: BufferType, on_device_memory: bool, updated_frequently: bool) -> (RawBuf, Option<*mut u8>) {
@@ -209,6 +214,23 @@ impl<'a> Buffer<'a> {
     fn copy_data_to_persistent_buffer(ptr: *mut u8, data: &[u8]) {
         unsafe {
             std::ptr::copy(data.as_ptr(), ptr, data.len());
+        }
+    }
+
+    pub fn set_signal_semaphores(&mut self, signal_semaphores: &Vec<vk::Semaphore>) {
+        self.signal_semaphores = signal_semaphores.clone();
+    }
+
+    pub fn get_copy_op(&self) -> BufferCopyInfo {
+        assert!(self.on_device_memory, "Tried to get copy op info for an on host buffer");
+
+        BufferCopyInfo {
+            buff: self.raw_staging_buf.as_ref().unwrap().buffer,
+
+            size: self.size,
+            dst: BufferCopyDestination::BUFFER(self.raw_buf.buffer),
+
+            signal_semaphores: self.signal_semaphores.clone()
         }
     }
 }

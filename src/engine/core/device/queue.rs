@@ -64,8 +64,6 @@ impl QueueFamily {
     }
 
     pub fn fill_with_queues(&mut self, device: &ash::Device) {
-        assert!(self.queues.len() < self.queues.capacity() - 1);
-
         for i in 0..self.queues.capacity() {
             self.queues.push(
                 unsafe { device.get_device_queue(self.index, i as u32) }
