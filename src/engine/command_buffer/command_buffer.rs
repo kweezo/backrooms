@@ -1,12 +1,11 @@
+use crate::engine::{Device, Fence, QueueType, Semaphore};
 use ash::vk;
 
-use crate::engine::{Device, Fence, QueueType, BinarySemaphore};
-
-pub struct CommandBufferSubmitInfo {
+pub struct CommandBufferSubmitInfo<'a> {
     pub command_buffer: vk::CommandBuffer,
-    pub wait_semaphores: Vec<vk::Semaphore>,
-    pub stage_flags: Vec<vk::PipelineStageFlags>,
-    pub signal_semaphores: Vec<vk::Semaphore>
+    pub wait_semaphores: Vec<(Semaphore<'a>, u64)>,
+    pub stage_flags: Vec<vk::PipelineStageFlags2>,
+    pub signal_semaphores: Vec<(Semaphore<'a>, u64)>
 }
 
 pub struct RenderPassInheritanceInfo {
@@ -23,10 +22,10 @@ pub struct CommandBuffer<'a> {
     command_buffer: vk::CommandBuffer,
     secondary: bool,
 
-    wait_semaphores: Vec<vk::Semaphore>,
-    stage_flags: Vec<vk::PipelineStageFlags>,
+    wait_semaphores: Vec<(Semaphore<'a>, u64)>,
+    stage_flags: Vec<vk::PipelineStageFlags2>,
 
-    signal_semaphores: Vec<vk::Semaphore>
+    signal_semaphores: Vec<(Semaphore<'a>, u64)>
 }
 
 impl<'a> CommandBuffer<'a> {
@@ -88,25 +87,19 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn add_signal_semaphores(&mut self, semaphores: Vec<BinarySemaphore>) {
-        let semaphore_handle: Vec<vk::Semaphore> = 
-        semaphores
-         .iter()
-         .map(|s| s.get_semaphore())
-         .collect();
+    pub fn add_signal_semaphores(&mut self, semaphores: Vec<(Semaphore<'a>, u64)>) {
 
-
-        self.signal_semaphores.extend(semaphore_handle);
+        self.signal_semaphores.extend(semaphores);
     }
 
-    pub fn add_wait_semaphores(&mut self, semaphores: Vec<(BinarySemaphore, vk::PipelineStageFlags)>) {
-        let semaphore_handle: Vec<vk::Semaphore> = 
+    pub fn add_wait_semaphores(&mut self, semaphores: Vec<(Semaphore<'a>, vk::PipelineStageFlags2, u64)>) {
+        let semaphore_handles: Vec<(Semaphore, u64)> = 
          semaphores
          .iter()
-         .map(|s| s.0.get_semaphore())
+         .map(|s| (s.0, s.2))
          .collect();
 
-        let stage_flags: Vec<vk::PipelineStageFlags> = 
+        let stage_flags: Vec<vk::PipelineStageFlags2> = 
          semaphores
          .iter()
          .map(|s| s.1)
@@ -114,7 +107,7 @@ impl<'a> CommandBuffer<'a> {
 
 
 
-        self.wait_semaphores.extend(semaphore_handle);
+        self.wait_semaphores.extend(semaphore_handles);
         self.stage_flags.extend(stage_flags);
     }
 
@@ -136,7 +129,6 @@ impl<'a> CommandBuffer<'a> {
             stage_flags: self.stage_flags.clone()
         };
     }
-
     pub fn submit_buffers(device: &Device, fence: Option<Fence>, queue_type: QueueType, submit_infos: &Vec<CommandBufferSubmitInfo>) {
         let mut command_buffers = Vec::with_capacity(submit_infos.len());
         let mut wait_semaphores = Vec::with_capacity(submit_infos.len());
@@ -144,24 +136,51 @@ impl<'a> CommandBuffer<'a> {
         let mut stage_flags = Vec::with_capacity(submit_infos.len());
 
         for submit_info in submit_infos.iter() {
-            command_buffers.push(submit_info.command_buffer);
-            wait_semaphores.extend(submit_info.wait_semaphores.clone());
-            signal_semaphores.extend(submit_info.signal_semaphores.clone());
             stage_flags.extend(submit_info.stage_flags.clone());
+
+            for (i, semaphore) in submit_info.wait_semaphores.iter().enumerate() {
+                wait_semaphores.push(vk::SemaphoreSubmitInfo {
+                    s_type: vk::StructureType::SEMAPHORE_SUBMIT_INFO,
+
+                    semaphore: semaphore.0.get_semaphore(),
+                    value: semaphore.1,
+                    stage_mask: submit_info.stage_flags[i], 
+
+                    ..Default::default() 
+                });
+            }
+
+            for semaphore in submit_info.signal_semaphores.iter() {
+                signal_semaphores.push(vk::SemaphoreSubmitInfo {
+                    s_type: vk::StructureType::SEMAPHORE_SUBMIT_INFO,
+
+                    semaphore: semaphore.0.get_semaphore(),
+                    value: semaphore.1,
+
+                    ..Default::default() 
+                });
+            }
+
+            command_buffers.push(vk::CommandBufferSubmitInfo {
+                s_type: vk::StructureType::COMMAND_BUFFER_SUBMIT_INFO,
+
+                command_buffer: submit_info.command_buffer,
+
+                ..Default::default() 
+            });
         }
 
-        let vk_submit_info = vk::SubmitInfo {
+        let vk_submit_info = vk::SubmitInfo2 {
             s_type: vk::StructureType::SUBMIT_INFO,
 
-            command_buffer_count: command_buffers.len() as u32,
-            p_command_buffers: command_buffers.as_ptr(),
+            command_buffer_info_count: command_buffers.len() as u32,
+            p_command_buffer_infos: command_buffers.as_ptr(),
 
-            wait_semaphore_count: wait_semaphores.len() as u32,
-            p_wait_semaphores: wait_semaphores.as_ptr(),
-            p_wait_dst_stage_mask: stage_flags.as_ptr(),
+            wait_semaphore_info_count: wait_semaphores.len() as u32,
+            p_wait_semaphore_infos: wait_semaphores.as_ptr(),
 
-            signal_semaphore_count: signal_semaphores.len() as u32,
-            p_signal_semaphores: signal_semaphores.as_ptr(),
+            signal_semaphore_info_count: signal_semaphores.len() as u32,
+            p_signal_semaphore_infos: signal_semaphores.as_ptr(),
 
             ..Default::default()
         };
@@ -172,7 +191,12 @@ impl<'a> CommandBuffer<'a> {
         };
 
         unsafe {
-            device.get_ash_device().queue_submit(device.get_queue(queue_type), &[vk_submit_info], fence_raw)
+            device.get_ash_device().queue_submit2(device.get_queue(queue_type), &[vk_submit_info], fence_raw)
         }.expect("Couldn't submit command buffers");
+
+    }
+
+    pub fn get_command_buffer(&self) -> vk::CommandBuffer {
+        self.command_buffer
     }
 }

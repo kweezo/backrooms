@@ -1,7 +1,6 @@
-mod binary_semaphore;
-mod timeline_semaphore;
+mod semaphore;
 mod fence;
 
-pub use binary_semaphore::BinarySemaphore;
-pub use timeline_semaphore::TimelineSemaphore;
+pub use semaphore::Semaphore;
+pub use semaphore::SemaphoreType;
 pub use fence::Fence;

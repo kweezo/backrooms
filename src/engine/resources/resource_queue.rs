@@ -28,6 +28,8 @@ impl ResourceQueue {
     }
 
     pub fn drain_copy_ops(&mut self) -> Vec<BufferCopyInfo> {
+        assert!(!self.copy_infos.is_empty());
+
         self.copy_infos.drain(0..self.copy_infos.len()).into_iter().collect()
     } 
 }

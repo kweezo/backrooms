@@ -9,7 +9,6 @@ use super::{device_config, physical_device, QueueFamily, QueueType};
 pub struct Device {
     device: ash::Device,
     physical_device: vk::PhysicalDevice,
-    curr_queue_index: RwLock<u32>,
 
     graphics_family: QueueFamily,
     transfer_family: Option<QueueFamily>,
@@ -148,7 +147,6 @@ impl Device {
             physical_device,
             graphics_family,
             transfer_family,
-            curr_queue_index: RwLock::new(0),
             allocator: Arc::new(RwLock::new(Arc::new(allocator))),
         }
     }
