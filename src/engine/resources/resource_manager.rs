@@ -38,6 +38,10 @@ impl<'a> ResourceManager<'a> {
                                     semaphore: Semaphore::new(device, crate::engine::SemaphoreType::TIMELINE, 0),
                                     finished_value: 1,
                                     busy: false });
+
+            let semaphore = processes[processes.len()-1].semaphore.clone();
+            let processes_len = processes.len();
+            processes[processes_len - 1].command_buffer.add_signal_semaphores(vec![(semaphore, 1)]);
         }
 
         processes
@@ -63,9 +67,9 @@ impl<'a> ResourceManager<'a> {
         process.unwrap()
     }
 
-    fn submit_queue(&mut self, queue: &mut ResourceQueue) {
+    pub fn submit_queue(&mut self, queue: &mut ResourceQueue) {
         let copy_ops = queue.drain_copy_ops();
-        let process = self.get_free_process();
+        let mut process = self.get_free_process();
 
         process.command_buffer.begin(None);
 
@@ -96,5 +100,7 @@ impl<'a> ResourceManager<'a> {
         }
     
         process.command_buffer.end();
+
+        CommandBuffer::submit_buffers(self.device, None, crate::engine::QueueType::TRANSFER, &vec![process.command_buffer.get_submit_info(true)]);
     }
 }

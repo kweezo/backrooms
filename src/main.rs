@@ -1,5 +1,5 @@
 mod window;
-use engine::{Fence, QueueType};
+use engine::{Fence, QueueType, ResourceManager, ResourceQueue};
 use window::*;
 
 mod engine;
@@ -14,24 +14,15 @@ fn main() {
     let buffer = engine::Buffer::new(core.get_device(), false, true, engine::BufferType::Vertex, &[1, 2, 3]);
 
 
-    let fence = Fence::new(core.get_device(), false);
 
+    let mut resource_manager = ResourceManager::new(core.get_device());
 
-    let command_pool = engine::CommandPool::new(core.get_device(), engine::QueueType::BOTH, false, false);
+    let mut queue = ResourceQueue::new();
+    queue.add_copy_ops(vec![buffer.get_copy_op()]);
 
-    let mut command_buffer = command_pool.allocate_command_buffers(false, 1).remove(0);
+    resource_manager.submit_queue(&mut queue);
 
-
-    command_buffer.begin(None);
-
-    command_buffer.end();
-
-    let submit_info = command_buffer.get_submit_info(false);
-
-    engine::CommandBuffer::submit_buffers(core.get_device(), Some(fence),
-     QueueType::BOTH, &vec![submit_info]);
-
-    while !window.should_close() {
-
+    unsafe{
+        device!(core).device_wait_idle();
     }
 }

@@ -1,4 +1,3 @@
-use super::Resource;
 use ash::vk;
 
 pub enum BufferCopyDestination {
@@ -23,8 +22,8 @@ impl ResourceQueue {
         ResourceQueue { copy_infos: Vec::new() }
     }
 
-    pub fn add_copy_op(&mut self, copy_info: BufferCopyInfo) {
-        self.copy_infos.push(copy_info);
+    pub fn add_copy_ops(&mut self, copy_infos: Vec<BufferCopyInfo>) {
+        self.copy_infos.extend(copy_infos);
     }
 
     pub fn drain_copy_ops(&mut self) -> Vec<BufferCopyInfo> {
