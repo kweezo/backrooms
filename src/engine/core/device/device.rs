@@ -1,4 +1,4 @@
-use ash::vk;
+use ash::{khr::timeline_semaphore, vk};
 use std::{
     collections::HashSet, os::raw::c_void, pin::Pin, sync::{Arc, RwLock}
 };
@@ -41,6 +41,22 @@ impl Device {
 
         let (extensions, _extensions_ptr) = device_config::get_extensions(instance, physical_device);
 
+        let mut synchronization2_feautre = vk::PhysicalDeviceSynchronization2Features {
+            s_type: vk::StructureType::PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
+            synchronization2: 1,
+
+            ..Default::default()
+        };
+
+        let mut timeline_semaphore_feature = vk::PhysicalDeviceTimelineSemaphoreFeatures {
+            s_type: vk::StructureType::PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+            timeline_semaphore: 1,
+
+            p_next: &mut synchronization2_feautre as *mut _ as *mut c_void,
+
+            ..Default::default()
+        };
+
         let mut descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeatures {
             s_type: vk::StructureType::PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
 
@@ -58,18 +74,21 @@ impl Device {
             descriptor_binding_storage_image_update_after_bind: true as u32,
             descriptor_binding_uniform_buffer_update_after_bind: true as u32,
 
+            p_next: &mut timeline_semaphore_feature as *mut _ as *mut c_void,
+
             ..Default::default()
         };
 
-        let device_features = vk::PhysicalDeviceFeatures2 {
+        let device_features2 = vk::PhysicalDeviceFeatures2 {
             s_type: vk::StructureType::PHYSICAL_DEVICE_FEATURES_2,
+
             p_next: &mut descriptor_indexing_features as *mut _ as *mut c_void,
             ..Default::default()
         };
 
         let create_info = vk::DeviceCreateInfo {
             s_type: vk::StructureType::DEVICE_CREATE_INFO,
-            p_next: &device_features as *const _ as *const c_void,
+            p_next: &device_features2 as *const _ as *const c_void,
 
             queue_create_info_count: queue_infos.len() as u32,
             p_queue_create_infos: queue_infos.as_ptr(),

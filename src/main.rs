@@ -1,5 +1,5 @@
 mod window;
-use engine::{Fence, QueueType, ResourceManager, ResourceQueue};
+use engine::{Buffer, BufferCopyInfo, Fence, QueueType, ResourceManager, ResourceQueue};
 use window::*;
 
 mod engine;
@@ -11,18 +11,32 @@ fn main() {
     let core = engine::Core::new(&window);
     let swapchain = engine::Swapchain::new(core.get_entry(), &window, core.get_instance(), core.get_device());
 
-    let buffer = engine::Buffer::new(core.get_device(), false, true, engine::BufferType::Vertex, &[1, 2, 3]);
+    let mut buffers = Vec::<Buffer>::with_capacity(50);
+    let mut queues = Vec::<ResourceQueue>::with_capacity(50);
 
+    for i in 0..50 {
+        buffers.push(
+            Buffer::new(core.get_device(), true, true, engine::BufferType::Vertex, &[1, 2, 3])
+        );
+
+        queues.push(ResourceQueue::new());
+
+        let len = queues.len();
+        queues[len-1].add_copy_ops(vec![buffers[buffers.len()-1].get_copy_op()]);
+    }
 
 
     let mut resource_manager = ResourceManager::new(core.get_device());
 
-    let mut queue = ResourceQueue::new();
-    queue.add_copy_ops(vec![buffer.get_copy_op()]);
+    for (i, queue) in queues.iter_mut().enumerate() {
+        dbg!(i);
+        resource_manager.submit_queue(queue);
+    }
 
-    resource_manager.submit_queue(&mut queue);
+    unsafe {
+        let _ = device!(core).device_wait_idle();
+    }
 
-    unsafe{
-        device!(core).device_wait_idle();
+    while !window.should_close() {
     }
 }

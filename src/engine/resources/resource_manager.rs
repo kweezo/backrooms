@@ -3,7 +3,7 @@ use ash::vk;
 
 use super::*;
 
-const STANDBY_PROCESS_COUNT: usize = 3;
+const TARGET_PROCESS_COUNT: usize = 3;
 
 #[derive(Clone)]
 struct Process<'a> {
@@ -23,7 +23,7 @@ pub struct ResourceManager<'a> {
 impl<'a> ResourceManager<'a> {
     pub fn new(device: &'a Device) -> ResourceManager<'a>{
         let command_pool: CommandPool<'a> = CommandPool::new(device, crate::engine::QueueType::TRANSFER, false, true);
-        let processes: Vec<Process<'a>> = ResourceManager::create_processes(device, &command_pool, STANDBY_PROCESS_COUNT);
+        let processes: Vec<Process<'a>> = ResourceManager::create_processes(device, &command_pool, TARGET_PROCESS_COUNT);
 
         ResourceManager { device, processes, command_pool }
     } 
@@ -41,7 +41,7 @@ impl<'a> ResourceManager<'a> {
 
             let semaphore = processes[processes.len()-1].semaphore.clone();
             let processes_len = processes.len();
-            processes[processes_len - 1].command_buffer.add_signal_semaphores(vec![(semaphore, 1)]);
+            processes[processes_len - 1].command_buffer.add_signal_semaphores(vec![(semaphore, vk::PipelineStageFlags2::TRANSFER, 1)]);
         }
 
         processes
@@ -103,4 +103,35 @@ impl<'a> ResourceManager<'a> {
 
         CommandBuffer::submit_buffers(self.device, None, crate::engine::QueueType::TRANSFER, &vec![process.command_buffer.get_submit_info(true)]);
     }
+
+    pub fn update(&mut self) {
+        let mut processes_len = self.processes.len();
+        let mut remove_list = Vec::<usize>::new();
+
+
+        for (i, process) in self.processes.iter_mut().enumerate() {
+            if processes_len > TARGET_PROCESS_COUNT {
+                remove_list.push(i);
+                processes_len -= 1;
+            }
+
+            if process.finished_value != process.semaphore.get_value() {
+                continue;
+            }
+
+            process.busy = false;
+            process.finished_value += 1;
+
+            unsafe{
+                self.device.get_ash_device().reset_command_buffer(process.command_buffer.get_command_buffer(), vk::CommandBufferResetFlags::empty())
+                 .expect("Failed to reset a resource command buffer");
+            }
+        } 
+
+        for i in remove_list {
+            self.processes.remove(i);
+        }
+        
+    }
+
 }

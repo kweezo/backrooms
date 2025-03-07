@@ -3,9 +3,12 @@ use ash::vk;
 
 pub struct CommandBufferSubmitInfo<'a> {
     pub command_buffer: vk::CommandBuffer,
+
     pub wait_semaphores: Vec<(Semaphore<'a>, u64)>,
-    pub stage_flags: Vec<vk::PipelineStageFlags2>,
-    pub signal_semaphores: Vec<(Semaphore<'a>, u64)>
+    pub src_stage_flags: Vec<vk::PipelineStageFlags2>,
+
+    pub signal_semaphores: Vec<(Semaphore<'a>, u64)>,
+    pub dst_stage_flags: Vec<vk::PipelineStageFlags2>,
 }
 
 pub struct RenderPassInheritanceInfo {
@@ -23,14 +26,15 @@ pub struct CommandBuffer<'a> {
     secondary: bool,
 
     wait_semaphores: Vec<(Semaphore<'a>, u64)>,
-    stage_flags: Vec<vk::PipelineStageFlags2>,
+    src_stage_flags: Vec<vk::PipelineStageFlags2>,
 
-    signal_semaphores: Vec<(Semaphore<'a>, u64)>
+    signal_semaphores: Vec<(Semaphore<'a>, u64)>,
+    dst_stage_flags: Vec<vk::PipelineStageFlags2>,
 }
 
 impl<'a> CommandBuffer<'a> {
     pub fn new(device: &'a Device, command_buffer: vk::CommandBuffer, secondary: bool) -> CommandBuffer<'a>{
-        CommandBuffer { device, command_buffer, secondary, wait_semaphores: Vec::new(), signal_semaphores: Vec::new(), stage_flags: Vec::new() }
+        CommandBuffer { device, command_buffer, secondary, wait_semaphores: Vec::new(), signal_semaphores: Vec::new(), src_stage_flags: Vec::new(), dst_stage_flags: Vec::new() }
     }
 
     pub fn get_inheritance_info(&self, render_pass_inheritance_info: Option<RenderPassInheritanceInfo>) -> vk::CommandBufferInheritanceInfo{
@@ -87,9 +91,24 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn add_signal_semaphores(&mut self, semaphores: Vec<(Semaphore<'a>, u64)>) {
+    pub fn add_signal_semaphores(&mut self, semaphores: Vec<(Semaphore<'a>, vk::PipelineStageFlags2, u64)>) {
 
-        self.signal_semaphores.extend(semaphores);
+        let semaphore_handles: Vec<(Semaphore, u64)> = 
+         semaphores
+         .iter()
+         .map(|s| (s.0, s.2))
+         .collect();
+
+        let stage_flags: Vec<vk::PipelineStageFlags2> = 
+         semaphores
+         .iter()
+         .map(|s| s.1)
+         .collect();
+
+
+
+        self.signal_semaphores.extend(semaphore_handles);
+        self.dst_stage_flags.extend(stage_flags);
     }
 
     pub fn add_wait_semaphores(&mut self, semaphores: Vec<(Semaphore<'a>, vk::PipelineStageFlags2, u64)>) {
@@ -108,7 +127,7 @@ impl<'a> CommandBuffer<'a> {
 
 
         self.wait_semaphores.extend(semaphore_handles);
-        self.stage_flags.extend(stage_flags);
+        self.src_stage_flags.extend(stage_flags);
     }
 
     pub fn get_submit_info(&mut self, clear_semaphores: bool) -> CommandBufferSubmitInfo {
@@ -118,7 +137,8 @@ impl<'a> CommandBuffer<'a> {
                 command_buffer: self.command_buffer,
                 wait_semaphores: self.wait_semaphores.drain(0..self.wait_semaphores.len()).collect(),
                 signal_semaphores: self.signal_semaphores.drain(0..self.signal_semaphores.len()).collect(),
-                stage_flags: self.stage_flags.clone()
+                src_stage_flags: self.src_stage_flags.drain(0..self.src_stage_flags.len()).collect(),
+                dst_stage_flags: self.dst_stage_flags.drain(0..self.dst_stage_flags.len()).collect(),
             };
         }
         
@@ -126,7 +146,8 @@ impl<'a> CommandBuffer<'a> {
             command_buffer: self.command_buffer,
             wait_semaphores: self.wait_semaphores.clone(),
             signal_semaphores: self.signal_semaphores.clone(),
-            stage_flags: self.stage_flags.clone()
+            src_stage_flags: self.src_stage_flags.clone(),
+            dst_stage_flags: self.dst_stage_flags.clone()
         };
     }
     pub fn submit_buffers(device: &Device, fence: Option<Fence>, queue_type: QueueType, submit_infos: &Vec<CommandBufferSubmitInfo>) {
@@ -136,7 +157,7 @@ impl<'a> CommandBuffer<'a> {
         let mut stage_flags = Vec::with_capacity(submit_infos.len());
 
         for submit_info in submit_infos.iter() {
-            stage_flags.extend(submit_info.stage_flags.clone());
+            stage_flags.extend(submit_info.src_stage_flags.clone());
 
             for (i, semaphore) in submit_info.wait_semaphores.iter().enumerate() {
                 wait_semaphores.push(vk::SemaphoreSubmitInfo {
@@ -144,18 +165,20 @@ impl<'a> CommandBuffer<'a> {
 
                     semaphore: semaphore.0.get_semaphore(),
                     value: semaphore.1,
-                    stage_mask: submit_info.stage_flags[i], 
+                    stage_mask: submit_info.src_stage_flags[i], 
 
                     ..Default::default() 
                 });
             }
 
-            for semaphore in submit_info.signal_semaphores.iter() {
+            for (i, semaphore) in submit_info.signal_semaphores.iter().enumerate() {
                 signal_semaphores.push(vk::SemaphoreSubmitInfo {
                     s_type: vk::StructureType::SEMAPHORE_SUBMIT_INFO,
 
                     semaphore: semaphore.0.get_semaphore(),
                     value: semaphore.1,
+                    stage_mask: submit_info.dst_stage_flags[i],
+
 
                     ..Default::default() 
                 });
@@ -171,7 +194,7 @@ impl<'a> CommandBuffer<'a> {
         }
 
         let vk_submit_info = vk::SubmitInfo2 {
-            s_type: vk::StructureType::SUBMIT_INFO,
+            s_type: vk::StructureType::SUBMIT_INFO_2,
 
             command_buffer_info_count: command_buffers.len() as u32,
             p_command_buffer_infos: command_buffers.as_ptr(),
