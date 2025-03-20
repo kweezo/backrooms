@@ -50,16 +50,20 @@ impl<'a> ResourceManager<'a> {
     fn get_free_process(&mut self) -> Process<'a> {
         let mut process: Option<Process<'a>> = None;
 
-        for curr_process in self.processes.iter() {
+        for curr_process in self.processes.iter_mut() {
             if curr_process.busy {
                 continue;
             }
 
+            curr_process.busy = true;
             process = Some(curr_process.clone());
         }
 
         if matches!(process, None) {
             process = Some(ResourceManager::create_processes(&self.device, &self.command_pool, 1).remove(0));
+            process.as_mut().unwrap().busy = true;
+
+            self.processes.push(process.as_ref().unwrap().clone());
         }
 
         process.as_mut().unwrap().busy = true;
@@ -127,9 +131,10 @@ impl<'a> ResourceManager<'a> {
                  .expect("Failed to reset a resource command buffer");
             }
         } 
+        
 
-        for i in remove_list {
-            self.processes.remove(i);
+        for (offset, i) in remove_list.iter().enumerate() {
+            self.processes.remove(*i - offset);
         }
         
     }

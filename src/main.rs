@@ -1,5 +1,5 @@
 mod window;
-use engine::{Buffer, BufferCopyInfo, Fence, QueueType, ResourceManager, ResourceQueue};
+use engine::{Buffer, BufferCopyInfo, Fence, QueueType, ResourceManager, ResourceQueue, Shader};
 use window::*;
 
 mod engine;
@@ -10,6 +10,8 @@ fn main() {
 
     let core = engine::Core::new(&window);
     let swapchain = engine::Swapchain::new(core.get_entry(), &window, core.get_instance(), core.get_device());
+
+    let shader = Shader::new(core.get_device(), "shaders/spirv/triangle.vert.spirv", "shaders/spirv/triangle.frag.spirv");
 
     let mut buffers = Vec::<Buffer>::with_capacity(50);
     let mut queues = Vec::<ResourceQueue>::with_capacity(50);
@@ -29,7 +31,6 @@ fn main() {
     let mut resource_manager = ResourceManager::new(core.get_device());
 
     for (i, queue) in queues.iter_mut().enumerate() {
-        dbg!(i);
         resource_manager.submit_queue(queue);
     }
 
@@ -38,5 +39,6 @@ fn main() {
     }
 
     while !window.should_close() {
+        resource_manager.update();
     }
 }
