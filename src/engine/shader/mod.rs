@@ -1,5 +1,5 @@
 mod shader;
-mod parser;
+mod descriptor_set;
 
-use parser::Parser;
 pub use shader::Shader;
+pub use descriptor_set::DescriptorSet;

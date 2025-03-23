@@ -4,8 +4,6 @@ use crate::engine::Device;
 use std::io::prelude::*;
 use std::fs::File;
 
-use super::Parser;
-
 pub struct Shader<'a> {
     vert_module: vk::ShaderModule,
     frag_module: vk::ShaderModule,
@@ -17,8 +15,6 @@ impl<'a> Shader<'a> {
     pub fn new(device: &'a Device, vert_path: &str, frag_path: &str) -> Shader<'a> {
         let vert_module = Shader::create_shader_module(device, vert_path);
         let frag_module = Shader::create_shader_module(device, frag_path);
-
-        let parser = Parser::new(&Shader::read_file(vert_path));
 
         Shader { vert_module, frag_module, device }
     }
