@@ -12,7 +12,7 @@ pub enum BufferType {
     Storage
 }
 
-struct RawBuf {
+pub struct RawBuf {
     buffer: vk::Buffer,
     allocation: vk_mem::Allocation,
 }
@@ -69,7 +69,7 @@ impl<'a> Buffer<'a> {
         Buffer { device, raw_buf, raw_staging_buf: Some(raw_staging_buf), ptr, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
     }
 
-    fn create_buffer(device: &Device, size: usize, buffer_type: BufferType, on_device_memory: bool, updated_frequently: bool) -> (RawBuf, Option<*mut u8>) {
+    pub fn create_buffer(device: &Device, size: usize, buffer_type: BufferType, on_device_memory: bool, updated_frequently: bool) -> (RawBuf, Option<*mut u8>) {
         let queue_family_indices =
          device.get_queue_family_indices(vec![QueueType::TRANSFER, QueueType::GRAPHICS]);
 
@@ -199,7 +199,7 @@ impl<'a> Buffer<'a> {
         (RawBuf { buffer, allocation }, None)
     }
 
-    fn copy_data_to_buffer(device: &Device, buf: &mut RawBuf, data: &[u8]) {
+    pub fn copy_data_to_buffer(device: &Device, buf: &mut RawBuf, data: &[u8]) {
         unsafe{
             let dst_ptr = device.get_allocator().map_memory(&mut buf.allocation)
              .expect("Failed to map buffer memory");
@@ -211,7 +211,7 @@ impl<'a> Buffer<'a> {
         }
     }
 
-    fn copy_data_to_persistent_buffer(ptr: *mut u8, data: &[u8]) {
+    pub fn copy_data_to_persistent_buffer(ptr: *mut u8, data: &[u8]) {
         unsafe {
             std::ptr::copy(data.as_ptr(), ptr, data.len());
         }

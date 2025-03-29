@@ -76,3 +76,11 @@ impl<'a> CommandPool<'a> {
         command_buffers
     }
 }
+
+impl<'a> Drop for CommandPool<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.get_ash_device().destroy_command_pool(self.command_pool, None);
+        }     
+    }
+}

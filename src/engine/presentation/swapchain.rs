@@ -259,4 +259,4 @@ impl<'a> Swapchain<'a> {
             self.surface_instance.get_physical_device_surface_capabilities(physical_device, self.surface_khr)
         }.expect("Failed to get the physical device surface capabilities")
     }
-    }
+}

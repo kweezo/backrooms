@@ -1,4 +1,4 @@
-use ash::{khr::timeline_semaphore, vk};
+use ash::vk;
 use std::{
     collections::HashSet, os::raw::c_void, pin::Pin, sync::{Arc, RwLock}
 };
