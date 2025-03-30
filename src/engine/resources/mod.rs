@@ -9,4 +9,3 @@ pub use buffer::BufferType;
 pub use resource_manager::ResourceManager;
 pub use resource_queue::ResourceQueue;
 pub use resource_queue::BufferCopyInfo;
-pub use image::RawImg;

@@ -1,3 +1,5 @@
+use std::os::unix::raw;
+
 use crate::engine::{resources::resource_queue::BufferCopyDestination, Device, QueueFamily, QueueType};
 use ash::vk::{self, Queue};
 use vk_mem::Alloc;
@@ -13,8 +15,8 @@ pub enum BufferType {
 }
 
 pub struct RawBuf {
-    buffer: vk::Buffer,
-    allocation: vk_mem::Allocation,
+    pub buffer: vk::Buffer,
+    pub allocation: vk_mem::Allocation,
 }
 
 pub struct Buffer<'a> {
@@ -53,7 +55,7 @@ impl<'a> Buffer<'a> {
                 return Buffer { device, raw_buf, raw_staging_buf: None, ptr: Some(ptr.unwrap()), size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
             } 
 
-            Buffer::copy_data_to_buffer(device, &mut raw_buf, data);
+            Buffer::copy_data_to_buffer(device, &mut raw_buf.allocation, data);
 
             return Buffer { device, raw_buf, raw_staging_buf: None, ptr: None, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() };
         }
@@ -63,7 +65,7 @@ impl<'a> Buffer<'a> {
         if updated_frequently {
             Buffer::copy_data_to_persistent_buffer(ptr.unwrap(), data);
         } else {
-            Buffer::copy_data_to_buffer(device, &mut raw_staging_buf, data);
+            Buffer::copy_data_to_buffer(device, &mut raw_staging_buf.allocation, data);
         }
 
         Buffer { device, raw_buf, raw_staging_buf: Some(raw_staging_buf), ptr, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
@@ -145,7 +147,7 @@ impl<'a> Buffer<'a> {
 
     }
 
-    fn create_staging_buffer(device: &Device, size: usize, updated_frequently: bool) -> (RawBuf, Option<*mut u8>) {
+    pub fn create_staging_buffer(device: &Device, size: usize, updated_frequently: bool) -> (RawBuf, Option<*mut u8>) {
         let queue_family_indices =
          device.get_queue_family_indices(vec![QueueType::TRANSFER]);
 
@@ -199,15 +201,15 @@ impl<'a> Buffer<'a> {
         (RawBuf { buffer, allocation }, None)
     }
 
-    pub fn copy_data_to_buffer(device: &Device, buf: &mut RawBuf, data: &[u8]) {
+    pub fn copy_data_to_buffer(device: &Device, allocation: &mut vk_mem::Allocation, data: &[u8]) {
         unsafe{
-            let dst_ptr = device.get_allocator().map_memory(&mut buf.allocation)
+            let dst_ptr = device.get_allocator().map_memory(allocation)
              .expect("Failed to map buffer memory");
 
             std::ptr::copy(data.as_ptr(), dst_ptr, data.len());
             //Sometimes I like to let jesus take the wheel
 
-            device.get_allocator().unmap_memory(&mut buf.allocation);
+            device.get_allocator().unmap_memory(allocation);
         }
     }
 

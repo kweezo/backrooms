@@ -1,8 +1,9 @@
 use ash::vk;
+use vk_mem::Alloc;
 
-use crate::engine::{Device, QueueType};
+use crate::engine::{resources::resource_queue::BufferCopyDestination, Device, QueueType};
 
-use super::{buffer, Buffer};
+use super::{buffer, Buffer, BufferCopyInfo};
 
 pub enum ImageType {
     SAMPLED,
@@ -10,36 +11,49 @@ pub enum ImageType {
     COLOR,
 }
 
+pub enum ImageLayout {
+    UNDEFINED,
+    GENERAL,
+    COLOR
+}
+
 struct RawImg {
-    image: vk::Image,
-    allocation: vk_mem::Allocation
+    pub image: vk::Image,
+    pub allocation: vk_mem::Allocation
 }
 
 pub struct Image<'a> {
     device: &'a Device,
 
+    raw_image: RawImg,
+    ptr: Option<*mut u8>,
+
     staging_buf: Option<buffer::RawBuf>,
 
-    size: vk::Extent2D,
+    dimensions: vk::Extent2D,
+    size: usize,
 
     updated_frequently: bool,
     on_device_memory: bool,
+
+    signal_semaphores: Vec<vk::Semaphore>
 }
 
 impl<'a> Image<'a> {
-    pub fn new(device: &'a Device, data: &[u8], width: u32, height: u32, updated_frequently: bool, on_device_memory: bool, image_type: ImageType) {
-        let (mut raw_buf, ptr)= Buffer::create_buffer(device, data.len(), buffer_type, on_device_memory, updated_frequently);
+    pub fn new(device: &'a Device, data: &[u8], width: u32, height: u32, updated_frequently: bool, on_device_memory: bool, image_type: ImageType, image_layout: ImageLayout, format: vk::Format) -> Image<'a> {
+        let (mut raw_image, ptr)= Image::create_image(device, vk::Extent2D {width, height}, data.len(), on_device_memory,
+             updated_frequently, image_type, image_layout, format);
 
         if !on_device_memory {
             if updated_frequently {
                 Buffer::copy_data_to_persistent_buffer(ptr.unwrap(), data);
 
-                return Buffer { device, raw_buf, raw_staging_buf: None, ptr: Some(ptr.unwrap()), size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
+                return Image { device, raw_image, staging_buf: None, ptr: Some(ptr.unwrap()), dimensions: vk::Extent2D {width, height}, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() };
             } 
 
-            Buffer::copy_data_to_buffer(device, &mut raw_buf, data);
+            Buffer::copy_data_to_buffer(device, &mut raw_image.allocation, data);
 
-            return Buffer { device, raw_buf, raw_staging_buf: None, ptr: None, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() };
+            return Image { device, raw_image, staging_buf: None, ptr: None, dimensions: vk::Extent2D {width, height}, size: data.len(), on_device_memory, updated_frequently, signal_semaphores: Vec::new() }
         }
 
         let (mut raw_staging_buf, ptr) = Buffer::create_staging_buffer(device, data.len(), updated_frequently);
@@ -47,11 +61,13 @@ impl<'a> Image<'a> {
         if updated_frequently {
             Buffer::copy_data_to_persistent_buffer(ptr.unwrap(), data);
         } else {
-            Buffer::copy_data_to_buffer(device, &mut raw_staging_buf, data);
+            Buffer::copy_data_to_buffer(device, &mut raw_staging_buf.allocation, data);
         }
+
+        Image { device, raw_image, ptr, staging_buf: None, dimensions: vk::Extent2D { width, height }, size: data.len(), updated_frequently, on_device_memory, signal_semaphores: Vec::new() }
     }
 
-    fn create_image(device: &Device, size: usize, on_device_memory: bool, updated_frequently: bool, image_type: ImageType) {
+    fn create_image(device: &Device, dimensions: vk::Extent2D, size: usize, on_device_memory: bool, updated_frequently: bool, image_type: ImageType, image_layout: ImageLayout, format: vk::Format) -> (RawImg, Option<*mut u8>){
         let queue_family_indices =
          device.get_queue_family_indices(vec![QueueType::TRANSFER, QueueType::GRAPHICS]);
 
@@ -71,13 +87,117 @@ impl<'a> Image<'a> {
             image_flags |= vk::ImageUsageFlags::TRANSFER_DST;
         }
 
+        let layout;
+        
+        if on_device_memory {
+            layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL
+        } else {
+            layout = match image_layout {
+                ImageLayout::COLOR => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                ImageLayout::GENERAL => vk::ImageLayout::GENERAL,
+                ImageLayout::UNDEFINED => vk::ImageLayout::UNDEFINED
+            }
+        }
+
+
+
         let image_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
 
             image_type: vk::ImageType::TYPE_2D,
-            format: vk::Format::
-        }
+
+            format,
+            extent: vk::Extent3D{width: dimensions.width, height: dimensions.height, depth: 1 },
+
+            mip_levels: 1,
+            array_layers: 1,
+            samples: vk::SampleCountFlags::TYPE_1,
+
+            sharing_mode,
+
+            queue_family_index_count: queue_family_indices.len() as u32,
+            p_queue_family_indices: queue_family_indices.as_ptr(),
+
+            initial_layout: layout,
+
+            ..Default::default()
+        };
+
+
+        let alloc_usage; 
+        let flags;
+        if on_device_memory {
+            alloc_usage = vk_mem::MemoryUsage::AutoPreferDevice;
+            flags = vk_mem::AllocationCreateFlags::empty();
+        } else {
+            alloc_usage = vk_mem::MemoryUsage::AutoPreferHost;
+            flags = vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE;
+        };
 
         
+        let allocation_info = vk_mem::AllocationCreateInfo {
+            flags,
+
+            required_flags: vk::MemoryPropertyFlags::empty(),
+            preferred_flags: vk::MemoryPropertyFlags::empty(),
+            usage: alloc_usage,
+
+            user_data: size,
+
+            ..Default::default()
+        };
+ 
+
+        let (image, mut allocation) = unsafe {
+            device.get_allocator()
+            .create_image(&image_info, &allocation_info)
+        }.expect("Failed to allocate a buffer");
+
+        if updated_frequently && !on_device_memory{
+            unsafe {
+                let ptr = device.get_allocator().map_memory(&mut allocation).expect("Failed to map persistent staging memory");
+
+                return (RawImg {image, allocation}, Some(ptr));
+            }
+        }
+
+        (RawImg {image, allocation }, None)
+    }
+
+    pub fn set_signal_semaphores(&mut self, signal_semaphores: &Vec<vk::Semaphore>) {
+        self.signal_semaphores = signal_semaphores.clone();
+    }
+
+    pub fn get_copy_op(&self) -> BufferCopyInfo {
+        assert!(self.on_device_memory, "Tried to get copy op info for an on host buffer");
+
+        BufferCopyInfo {
+            buff: self.staging_buf.as_ref().unwrap().buffer,
+            dst: BufferCopyDestination::IMAGE(self.raw_image.image),
+
+            size: self.size,
+
+            signal_semaphores: self.signal_semaphores.clone()
+        }
+    }
+}
+
+impl<'a> Drop for Image<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            if self.updated_frequently {
+                if self.on_device_memory {
+                    self.device.get_allocator().unmap_memory(&mut self.staging_buf.as_mut().unwrap().allocation);
+                } else {
+                    self.device.get_allocator().unmap_memory(&mut self.raw_image.allocation);
+                }
+            }
+
+            if self.on_device_memory {
+                self.device.get_allocator().destroy_buffer(self.staging_buf.as_ref().unwrap().buffer, &mut self.staging_buf.as_mut().unwrap().allocation);
+            }
+
+            self.device.get_allocator().destroy_image(self.raw_image.image, &mut self.raw_image.allocation);
+        }
     }
 }
