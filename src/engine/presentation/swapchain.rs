@@ -1,8 +1,8 @@
 use ash::{khr, vk, Entry};
-use std::{cmp::*, mem::swap};
+use std::cmp::*;
 
 use super::super::core::*;
-use crate::{instance, Window};
+use crate::Window;
 
 const PREFERRED_IMAGE_COUNT: u32 = 3;
 
@@ -252,6 +252,14 @@ impl<'a> Swapchain<'a> {
 
     pub fn get_image_views(&self) -> &Vec<vk::ImageView> {
         &self.image_views
+    }
+
+    pub fn get_image_format(&self) -> vk::Format {
+        self.format.format
+    }
+
+    pub fn get_size(&self) -> (u32, u32) {
+        (self.extent.width, self.extent.height)
     }
 
     pub fn get_physical_device_surface_capabilities(&self, physical_device: vk::PhysicalDevice) -> vk::SurfaceCapabilitiesKHR{

@@ -1,4 +1,4 @@
-use crate::engine::{CommandBuffer, CommandPool, Device, Semaphore};
+use crate::engine::{CommandBuffer, CommandPool, Device, QueueType, Semaphore};
 use ash::vk;
 
 use super::*;
@@ -74,12 +74,14 @@ impl<'a> ResourceManager<'a> {
     pub fn submit_queue(&mut self, queue: &mut ResourceQueue) {
         let copy_ops = queue.drain_copy_ops();
         let mut process = self.get_free_process();
+        
+        let mut image_barriers = Vec::new();
 
         process.command_buffer.begin(None);
 
         unsafe{
             for op in copy_ops.iter() {
-                match op.dst {
+                match &op.dst {
                     resource_queue::BufferCopyDestination::BUFFER(buff) => {
                         let region = vk::BufferCopy {
                             size: op.size as u64,
@@ -87,21 +89,49 @@ impl<'a> ResourceManager<'a> {
                             dst_offset: 0
                         };
 
-                        self.device.get_ash_device().cmd_copy_buffer(process.command_buffer.get_command_buffer(), op.buff, buff, &[region]);
+                        self.device.get_ash_device().cmd_copy_buffer(process.command_buffer.get_command_buffer(), op.buff, *buff, &[region]);
                     },
                     resource_queue::BufferCopyDestination::IMAGE(img) => {
-                        let region = vk::BufferCopy {
-                            size: op.size as u64,
-                            src_offset: 0,
-                            dst_offset: 0
+                        let subres_range = vk::ImageSubresourceRange {
+                            aspect_mask: img.aspect,
+
+                            base_array_layer: 0,
+                            base_mip_level: 0,
+
+                            layer_count: 1,
+                            level_count: 1
                         };
 
-//                        self.device.get_ash_device().cmd_copy_buffer_to_image(process.command_buffer.get_command_buffer(), op.buff, img, &[region]);
-                        todo!("layout bs");
+                        image_barriers.push(
+                            vk::ImageMemoryBarrier {
+                                s_type: vk::StructureType::IMAGE_MEMORY_BARRIER,
+
+                                src_access_mask: vk::AccessFlags::MEMORY_WRITE,
+                                dst_access_mask: vk::AccessFlags::NONE,
+
+                                old_layout: vk::ImageLayout::UNDEFINED,
+                                new_layout: img.layout,
+
+                                src_queue_family_index: self.device.get_queue_family_indices(vec![QueueType::TRANSFER])[0],
+                                dst_queue_family_index: self.device.get_queue_family_indices(vec![QueueType::GRAPHICS])[0],
+
+                                image: img.image,
+                                subresource_range: subres_range,
+
+                                ..Default::default()
+                            }
+                        );    
                     }
                 }
             }
+
+            if !image_barriers.is_empty() {
+                self.device.get_ash_device().cmd_pipeline_barrier(process.command_buffer.get_command_buffer(),
+                 vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER,
+                  vk::DependencyFlags::empty(), &[], &[], image_barriers.as_slice());
+            }
         }
+
     
         process.command_buffer.end();
 

@@ -6,7 +6,7 @@ use ash::{
 };
 
 use std::{
-    ffi::{CStr, CString},
+    ffi::CString,
     fs,
 };
 

@@ -4,10 +4,7 @@ use ash::{
     Entry,
 };
 
-use std::{
-    ffi::CStr,
-    fs,
-};
+use std::ffi::CStr;
 
 use crate::Window;
 

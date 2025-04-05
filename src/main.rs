@@ -1,6 +1,9 @@
 mod window;
-use engine::{Buffer, BufferCopyInfo, Fence, QueueType, ResourceManager, ResourceQueue, Shader};
+use std::mem::swap;
+
+use engine::{Attachment, Buffer, Image, ImageCreateInfo, RenderPass, ResourceManager, ResourceQueue, Shader, Subpass};
 use window::*;
+use ash::vk::{self};
 
 mod engine;
 
@@ -13,32 +16,31 @@ fn main() {
 
     let shader = Shader::new(core.get_device(), "shaders/spirv/triangle.vert.spirv", "shaders/spirv/triangle.frag.spirv");
 
-    let mut buffers = Vec::<Buffer>::with_capacity(50);
-    let mut queues = Vec::<ResourceQueue>::with_capacity(50);
+    let attachment = Attachment {
+        format: swapchain.get_image_format(),
+        samples: vk::SampleCountFlags::TYPE_1,
+        load_op: vk::AttachmentLoadOp::CLEAR,
+        store_op: vk::AttachmentStoreOp::STORE,
+        initial_layout: vk::ImageLayout::UNDEFINED,
+        final_layout: vk::ImageLayout::PRESENT_SRC_KHR
+    };
 
-    for i in 0..50 {
-        buffers.push(
-            Buffer::new(core.get_device(), true, true, engine::BufferType::Vertex, &[1, 2, 3])
-        );
+    let attachment_ref = vk::AttachmentReference {
+        attachment: 0,
+        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+    };
 
-        queues.push(ResourceQueue::new());
+    let subpass = Subpass {
+        bind_point: vk::PipelineBindPoint::GRAPHICS,
+        color_attachments: vec![attachment_ref],
+        input_attachments: vec![],
+        resolve_attachments: vec![]
+    };
 
-        let len = queues.len();
-        queues[len-1].add_copy_ops(vec![buffers[buffers.len()-1].get_copy_op()]);
-    }
-
-
-    let mut resource_manager = ResourceManager::new(core.get_device());
-
-    for (i, queue) in queues.iter_mut().enumerate() {
-        resource_manager.submit_queue(queue);
-    }
-
-    unsafe {
-        let _ = device!(core).device_wait_idle();
-    }
+    let render_pass = RenderPass::new(core.get_device(), &[attachment], &[subpass], &[],
+        &swapchain.get_image_views(), swapchain.get_size());
 
     while !window.should_close() {
-        resource_manager.update();
+//        resource_manager.update();
     }
 }

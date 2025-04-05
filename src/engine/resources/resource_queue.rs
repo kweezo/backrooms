@@ -1,8 +1,10 @@
 use ash::vk;
 
+use super::ImageCopyInfo;
+
 pub enum BufferCopyDestination {
     BUFFER(vk::Buffer),
-    IMAGE(vk::Image)
+    IMAGE(ImageCopyInfo)
 }
 
 pub struct BufferCopyInfo {

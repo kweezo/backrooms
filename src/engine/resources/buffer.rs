@@ -1,7 +1,6 @@
-use std::os::unix::raw;
 
-use crate::engine::{resources::resource_queue::BufferCopyDestination, Device, QueueFamily, QueueType};
-use ash::vk::{self, Queue};
+use crate::engine::{resources::resource_queue::BufferCopyDestination, Device, QueueType};
+use ash::vk::{self};
 use vk_mem::Alloc;
 
 use super::resource_queue::BufferCopyInfo;
